@@ -6,10 +6,10 @@
 #include "sqliter/sqlite_impl.h"
 
 #include <boost/asio.hpp>
+#include <boost/core/ignore_unused.hpp>
 #include <functional>  // std::bind
-#include <stdexcept>  // std::runtime_error
-#include <string>     // std::string
-
+#include <stdexcept>   // std::runtime_error
+#include <string>      // std::string
 
 namespace sqliter {
 namespace asio {
@@ -50,7 +50,7 @@ public:
   }
 
   template <typename Handler>
-  void async_query(implementation_type &impl, const std::string &sql, Handler &handler)
+  void async_query1(implementation_type &impl, const std::string &sql, Handler &handler)
   {
     boost::system::error_code ec = boost::system::error_code();
 
@@ -61,6 +61,7 @@ public:
     try
     {
       sqlite_impl::query_handler qh{[&result](int num_columns, char **data, char **) {
+        boost::ignore_unused(num_columns);
         assert(num_columns == std::tuple_size<typename query_result_type::result_data_type>::value);
         result.data.push_back(query_result_type::make_tuple_from_data(data));
       }};
@@ -73,6 +74,74 @@ public:
     {
       ec = boost::asio::error::operation_aborted;
       this->io_service_.post(std::bind(handler, ec, result));
+    }
+  }
+
+  template <typename Handler>
+  void async_query(implementation_type &impl, const std::string &sql, Handler &handler)
+  {
+    boost::system::error_code ec = boost::system::error_code();
+
+    try
+    {
+      impl->query(sql);
+
+      this->io_service_.post(std::bind(handler, ec));
+    }
+    catch (const std::exception &e)
+    {
+      ec = boost::asio::error::operation_aborted;
+      this->io_service_.post(std::bind(handler, ec));
+    }
+  }
+
+  template <typename query_result_type>
+  void query(implementation_type &impl, const std::string &sql, boost::system::error_code &ec,
+             query_result_type &result)
+  {
+    ec = boost::system::error_code();
+
+    try
+    {
+      sqlite_impl::query_handler qh{[&result](int num_columns, char **data, char **) {
+        boost::ignore_unused(num_columns);
+        assert(num_columns == std::tuple_size<typename query_result_type::result_data_type>::value);
+        result.data.push_back(query_result_type::make_tuple_from_data(data));
+      }};
+
+      impl->query(sql, qh);
+    }
+    catch (const std::exception &e)
+    {
+      ec = boost::asio::error::operation_aborted;
+    }
+  }
+
+  void query(implementation_type &impl, const std::string &sql, boost::system::error_code &ec)
+  {
+    ec = boost::system::error_code();
+
+    try
+    {
+      impl->query(sql);
+    }
+    catch (const std::exception &e)
+    {
+      ec = boost::asio::error::operation_aborted;
+    }
+  }
+
+  void close(implementation_type &impl, boost::system::error_code &ec)
+  {
+    ec = boost::system::error_code();
+
+    try
+    {
+      impl->destroy();
+    }
+    catch (const std::exception &e)
+    {
+      ec = boost::asio::error::operation_aborted;
     }
   }
 
